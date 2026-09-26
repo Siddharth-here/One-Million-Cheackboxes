@@ -3,13 +3,10 @@ import path from "node:path";
 
 import express from "express";
 import { Server } from "socket.io";
-import { publisher, subscriber } from "./redis-connection.js";
-import { channel } from "node:diagnostics_channel";
+import { publisher, subscriber, redis } from "./redis-connection.js";
 
 const CHECKBOX_SIZE = 100;
-const state = {
-  checkboxes: new Array(CHECKBOX_SIZE).fill(false),
-};
+const CHECKBOX_STATE_KEY = "checkbox-state";
 
 async function main() {
   const PORT = process.env.PORT ?? 8000;
@@ -24,8 +21,8 @@ async function main() {
   subscriber.on("message", (channel, message) => {
     if (channel === "internal-server:checkbox:change") {
       const { index, checked } = JSON.parse(message);
-      state.checkboxes[index] = checked;
-      io.emit("server:checkbox:change",{ index, checked });
+
+      io.emit("server:checkbox:change", { index, checked });
     }
   });
 
@@ -33,10 +30,41 @@ async function main() {
   io.on("connection", (socket) => {
     console.log(`socket connected`, { id: socket.id });
 
+    // socket.on("client:checkbox:change", async (data) => {
+    //   console.log(`[Socket:${socket.id}]:client:checkbox:change`, data);
+
+    //   const existingState = await redis.get(CHECKBOX_STATE_KEY);
+
+    //   if (existingState) {
+    //     const remoteData = JSON.parse(existingState);
+    //     remoteData[data.index] = data.checked;
+    //     await redis.set(CHECKBOX_STATE_KEY, JSON.stringify(remoteData));
+    //   } else {
+    //     await redis.set(
+    //       CHECKBOX_STATE_KEY,
+    //       JSON.stringify(new Array(CHECKBOX_SIZE).fill(false)),
+    //     );
+    //   }
+
+    //   redis.set(CHECKBOX_STATE_KEY, JSON.stringify());
+
+    //   await publisher.publish(
+    //     "internal-server:checkbox:change",
+    //     JSON.stringify(data),
+    //   );
+    // });
+
     socket.on("client:checkbox:change", async (data) => {
-      console.log(`[Socket:${socket.id}]:client:checkbox:change`, data);
-      // io.emit("server:checkbox:change", data);
-      // state.checkboxes[data.index] = data.checked;
+      const existingState = await redis.get(CHECKBOX_STATE_KEY);
+
+      let remoteData;
+      if (existingState) {
+        remoteData = JSON.parse(existingState);
+      } else {
+        remoteData = new Array(CHECKBOX_SIZE).fill(false);
+      }
+      remoteData[data.index] = data.checked;
+      await redis.set(CHECKBOX_STATE_KEY, JSON.stringify(remoteData));
 
       await publisher.publish(
         "internal-server:checkbox:change",
@@ -50,8 +78,13 @@ async function main() {
 
   app.use(express.static(path.resolve("./public"))); //middleware tells if the files is in public folder then show it to user
 
-  app.get("/checkboxes", (req, res) => {
-    return res.json({ checkboxes: state.checkboxes });
+  app.get("/checkboxes", async (req, res) => {
+    const existingState = await redis.get(CHECKBOX_STATE_KEY);
+    if (existingState) {
+      const remoteData = JSON.parse(existingState);
+      return res.json({ checkboxes: remoteData });
+    }
+    return res.json({ checkboxes: new Array(CHECKBOX_SIZE).fill(false) });
   });
 
   server.listen(PORT, () => {
