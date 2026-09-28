@@ -6,7 +6,9 @@ import { Server } from "socket.io";
 import { publisher, subscriber, redis } from "./redis-connection.js";
 
 const CHECKBOX_SIZE = 100;
-const CHECKBOX_STATE_KEY = "checkbox-state";
+const CHECKBOX_STATE_KEY = "checkbox-state:v1";
+
+const rateLimitingHashMap = new Map();
 
 async function main() {
   const PORT = process.env.PORT ?? 8000;
@@ -55,6 +57,17 @@ async function main() {
     // });
 
     socket.on("client:checkbox:change", async (data) => {
+      const lastOperationTime = rateLimitingHashMap.get(socket.id);
+
+      if (lastOperationTime) {
+        const timeElapsed = Date.now() - lastOperationTime;
+        if (timeElapsed < 5.5 * 1000) {
+          socket.emit("server:error", { error: `please wait` });
+          return;
+        }
+      }
+      rateLimitingHashMap.set(socket.id, Date.now());
+
       const existingState = await redis.get(CHECKBOX_STATE_KEY);
 
       let remoteData;
