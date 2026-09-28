@@ -188,7 +188,9 @@
     <h1>cheakboxes</h1>
     <div id="error-alert" role="alert" aria-live="assertive" hidden>
       <span id="error-message"></span>
-      <button id="dismiss-error" type="button" aria-label="Dismiss alert">&times;</button>
+      <button id="dismiss-error" type="button" aria-label="Dismiss alert">
+        &times;
+      </button>
     </div>
     <div id="container"></div>
     <script src="/socket.io/socket.io.js"></script>
@@ -203,7 +205,9 @@
       const CHECKBOX_COUNT = 100;
 
       socket.on("server:error", (data) => {
-        errorMessageElement.textContent = String(data?.error ?? "An unexpected error occurred.");
+        errorMessageElement.textContent = String(
+          data?.error ?? "An unexpected error occurred.",
+        );
         errorAlert.hidden = false;
       });
 
@@ -217,27 +221,35 @@
         }
       });
 
-      window.addEventListener("load", async () => {
+      async function fetchStateFromServer() {
+        while (container.firstChild) {
+          container.removeChild(container.firstChild)
+          
+        }
         const response = await fetch("/checkboxes", { method: "GET" });
         const data = await response.json();
-
 
         if (data && data.checkboxes) {
           data.checkboxes.forEach((serverValue, index) => {
             const input = document.createElement("input");
             input.type = "checkbox";
             input.id = `checkbox-${index}`;
-            input.checked = serverValue
+            input.checked = serverValue;
 
             input.addEventListener("change", (event) => {
               const checked = event.target.checked;
               console.log("Checkbox Changed", { index, checked });
               socket.emit("client:checkbox:change", { index, checked });
+              fetchStateFromServer()
             });
 
             container.appendChild(input);
           });
         }
+      }
+
+      window.addEventListener("load", async () => {
+        fetchStateFromServer()
       });
     </script>
   </body>

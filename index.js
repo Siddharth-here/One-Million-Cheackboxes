@@ -57,16 +57,17 @@ async function main() {
     // });
 
     socket.on("client:checkbox:change", async (data) => {
-      const lastOperationTime = rateLimitingHashMap.get(socket.id);
+      const lastOperationTime = await redis.get(`rate-limiting:${socket.id}`);
 
       if (lastOperationTime) {
-        const timeElapsed = Date.now() - lastOperationTime;
+        const timeElapsed = Date.now() - Number(lastOperationTime);
         if (timeElapsed < 5.5 * 1000) {
           socket.emit("server:error", { error: `please wait` });
           return;
         }
       }
-      rateLimitingHashMap.set(socket.id, Date.now());
+      await redis.set(`rate-limiting:${socket.id}`, Date.now().toString());
+      
 
       const existingState = await redis.get(CHECKBOX_STATE_KEY);
 
